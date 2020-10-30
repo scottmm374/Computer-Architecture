@@ -31,6 +31,18 @@ class CPU:
 
     def load(self):
         """Load a program into memory."""
+        print(sys.argv)
+        if len(sys.argv) != 2:
+            print("incorrect number of arguments")
+            sys.exit(1)
+        with open(sys.argv[1]) as f:
+            for line in f:
+                line_split = line.split("#")
+                ir = line_split[0].strip()
+                if ir == '':
+                    continue
+                ir_num = int(ir, 10)
+                self.ram.append(ir_num)
 
         address = 0
 
