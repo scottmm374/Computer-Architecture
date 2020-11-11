@@ -50,7 +50,6 @@ class CPU:
         self.ram = [0] * 256
         self.reg = [0] * 8
         self.reg[SP] = STACK_HEAD
-
         self.pc = 0x00
         self.fl = 0x00
 
@@ -68,9 +67,24 @@ class CPU:
 
         self.is_running = False
 
+    def _cmp(self, *operands):
+        pass
+
+    def _jmp(self, *operands):
+        # JMP register
+        # Jump to the address stored in the given register."""
+        pass
+
+    def _jeq(self, *operands):
+        # JEQ register
+        pass
+
+    def _jne(self, *operands):
+        # JNE register
+        pass
+
     def _ldi(self, *operands):
-        """LDI registerA
-        Set the value of a register to an integer."""
+        # Set the value of a register to an integer.
 
         self.reg[operands[0]] = operands[1]
 
