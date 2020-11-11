@@ -1,22 +1,41 @@
 """CPU functionality."""
 
 import sys
-# Codes
 
-HLT = 0b00000001
+
+### Registers ###
+R0 = 0x00
+R1 = 0x01
+R2 = 0x02
+R3 = 0x03
+R4 = 0x04
+R5 = 0x05
+R6 = 0x06
+R7 = 0x07
+PROGRAM_END = 0x04
+SP = 0x07
+STACK_HEAD = 0xf4
+DONE = 0
+
+# Other
+MUL = 0b10100010
+CALL = 0b01010000
+RET = 0b00010001
+PUSH = 0b01000101
+POP = 0b01000110
 PRN = 0b01000111
+HLT = 0b00000001
 LDI = 0b10000010
+DONE = 0
+UNKNOWN_INSTRUCTION = 1
+IO_ERROR = 2
+STACK_OVERFLOW = 3
 
-"""
-
-Step 1: Add the constructor to cpu.py
-Add list properties to the CPU class to hold 256 bytes of memory and 8 general-purpose registers.
-
-Hint: you can make a list of a certain number of zeros with this syntax:
-
-x = [0] * 25  # x is a list of 25 zeroes
-
-"""
+### Bit Tools ###
+ONE_BYTE = 0xff
+ONE_BIT = 0x01
+OP_SETS_INST = 0x04
+NUM_OPERANDS = 0x06
 
 
 class CPU:
@@ -24,50 +43,106 @@ class CPU:
 
     def __init__(self):
         """Construct a new CPU."""
-        self.reg = [0] * 8
         self.ram = [0] * 256
+        self.reg = [0] * 8
+        self.reg[SP] = STACK_HEAD
         self.pc = 0
-        self.running = False
 
-    def load(self):
+        self.perform_op = {}
+        self.perform_op[LDI] = self._ldi
+        self.perform_op[PRN] = self._prn
+        self.perform_op[HLT] = self._hlt
+        self.perform_op[MUL] = self._mul
+        self.perform_op[PUSH] = self._push
+        self.perform_op[POP] = self._pop
+
+        self.is_running = False
+
+    def _ldi(self, *operands):
+        """LDI registerA
+        Set the value of a register to an integer."""
+
+        self.reg[operands[0]] = operands[1]
+
+    def _prn(self, *operands):
+        """PRN registerA
+        Print numeric value stored in the given register."""
+        print(self.reg[operands[0]])
+
+    def _hlt(self, *operands):
+        """HLT
+        Halt the CPU (and exit the emulator)."""
+
+        self.is_running = False
+
+    def _mul(self, *operands):
+        """MUL registerA registerB
+        Multiply the values in two registers together and store the result in registerA."""
+
+        self.alu("MUL", *operands)
+
+    def _pop(self, *operands):
+        """POP registerA
+        Pop the value at the top of the stack into the given register."""
+
+        self.reg[operands[0]] = self.ram_read(self.reg[SP])
+        if self.reg[SP] < STACK_HEAD:
+            self.reg[SP] += 1
+
+    def _push(self, *operands):
+        """PUSH registerA
+        Push the value in the given register on the stack."""
+
+        if (self.reg[SP]-1) >= self.reg[PROGRAM_END]:
+            self.reg[SP] -= 1
+            self.ram_write(self.reg[SP], self.reg[operands[0]])
+        else:
+            print(f"Stack Overflow!!")
+            self.trace()
+            self._shutdown(STACK_OVERFLOW)
+
+    def load(self, program_path):
         """Load a program into memory."""
-        print(sys.argv)
-        if len(sys.argv) != 2:
-            print("incorrect number of arguments")
-            sys.exit(1)
-        with open(sys.argv[1]) as f:
-            for line in f:
-                line_split = line.split("#")
-                ir = line_split[0].strip()
-                if ir == '':
-                    continue
-                ir_num = int(ir, 10)
-                self.ram.append(ir_num)
-
         address = 0
 
-        # For now, we've just hardcoded a program:
+        try:
+            with open(program_path) as program:
+                for line in program:
+                    split_line = line.split("#")
+                    instruction = split_line[0].strip()
+                    if instruction != "":
+                        self.ram[address] = int(instruction, 2)
+                        address += 1
+        except:
+            print(f"Cannot open file at \"{program_path}\"")
+            self._shutdown(IO_ERROR)
 
-        program = [
-            # From print8.ls8
-            0b10000010,  # LDI R0,8
-            0b00000000,
-            0b00001000,
-            0b01000111,  # PRN R0
-            0b00000000,
-            0b00000001,  # HLT
-        ]
+        # store end of program into PROGRAM_END register
+        self.reg[PROGRAM_END] = address
 
-        for instruction in program:
-            self.ram[address] = instruction
-            address += 1
+    def _to_next_instruction(self, ir):
+        # Meanings of the bits in the first byte of each instruction: AABCDDDD
+        #   AA Number of operands for this opcode, 0-2
+        #   B 1 if this is an ALU operation
+        #   C 1 if this instruction sets the PC
+        #   DDDD Instruction identifier
+        isPcAlreadySet = ir >> OP_SETS_INST
+        isPcAlreadySet = isPcAlreadySet & ONE_BIT
+        if not isPcAlreadySet:
+            self.pc += (ir >> NUM_OPERANDS) + 1
+
+    def _shutdown(self, exit_code=DONE):
+        print("Shutting Down...")
+        sys.exit(exit_code)
 
     def alu(self, op, reg_a, reg_b):
         """ALU operations."""
 
         if op == "ADD":
-            self.reg[reg_a] += self.reg[reg_b]
+            self.reg[reg_a] += self.reg[reg_b] & ONE_BYTE
         # elif op == "SUB": etc
+        elif op == "MUL":
+            self.reg[reg_a] *= self.reg[reg_b] & ONE_BYTE
         else:
             raise Exception("Unsupported ALU operation")
 
@@ -91,88 +166,29 @@ class CPU:
 
         print()
 
-    def run(self):
-        """Run the CPU."""
-        # set running to True
-        self.running = True
-        while self.running:
-            #  read memory address  stored in register pc
-            ir = self.ram_read(self.pc)
-            self.ram_read(self.pc)
-            # store values from ram_read into variables in case they are needed.
-            op_a = self.ram_read(self.pc + 1)
-            op_b = self.ram_read(self.pc + 2)
-            self.trace()
-            if ir == LDI:
-                self.ldi(op_a, op_b)
-
-            elif ir == PRN:
-                self.prn(op_a, op_b)
-
-            elif ir == HLT:
-                self.hlt()
-
     def ram_read(self, mar):
         return self.ram[mar]
 
     def ram_write(self, mar, mdr):
         self.ram[mar] = mdr
 
-    def hlt(self):
+    def run(self):
+        """Run the CPU."""
+        print("Running...")
+        self.is_running = True
+        while self.is_running:
+            instruction_reg = self.ram_read(self.pc)
+            op_a = self.ram_read(self.pc + 1)
+            op_b = self.ram_read(self.pc + 2)
+            # print("--- Before OP ---")
+            # self.trace()
+            if instruction_reg in self.perform_op:
+                self.perform_op[instruction_reg](op_a, op_b)
+                self._to_next_instruction(instruction_reg)
+            else:
+                print(f"Unknown Instruction {instruction_reg}")
+                self._shutdown(UNKNOWN_INSTRUCTION)
+            # print("--- After OP ---")
+            # self.trace()
 
-        self.running = False
-        self.pc += 1
-        '''
-        Implement HLT instruction handler, similar to exit() in python
-        In run() in your if-else block, exit the loop if a HLT instruction is encountered, regardless of whether or not there are more lines of code in the LS-8 program you loaded.
-
-        `HLT`
-        Halt the CPU (and exit the emulator).
-
-        Machine code:
-
-        00000001 
-        01
-
-        '''
-        pass
-
-    def ldi(self, *operands):
-        self.reg[operands[0]] = operands[1]
-        self.pc += 3
-
-        '''
-        This instruction sets a specified register to a specified value.
-        See the LS-8 spec for the details of what this instructions does 
-        and its opcode value.
-
-        Set the value of a register to an integer.
-        Machine code:
-
-        10000010 00000rrr iiiiiiii
-        82 0r ii
-
-        '''
-        pass
-
-    def prn(self, *operands):
-        print(self.reg[operands[0]])
-        self.pc += 2
-        '''
-        This is a very similar process to adding LDI, but the handler is simpler. See the LS-8 spec.
-        At this point, you should be able to run the program and have it print 8 to the console!
-
-        Print numeric value stored in the given register.
-
-        Print to the console the decimal integer value that is stored in the given
-        register.
-
-        Machine code:
-
-        01000111 00000rrr
-        47 0r
-
-        '''
-        pass
-
-    # Left off at step 7 in readme
+        self._shutdown()
