@@ -26,6 +26,10 @@ POP = 0b01000110
 PRN = 0b01000111
 HLT = 0b00000001
 LDI = 0b10000010
+JMP = 0b01010100
+JEQ = 0b01010101
+JNE = 0b01010110
+CMP = 0b10100111
 DONE = 0
 UNKNOWN_INSTRUCTION = 1
 IO_ERROR = 2
@@ -46,7 +50,9 @@ class CPU:
         self.ram = [0] * 256
         self.reg = [0] * 8
         self.reg[SP] = STACK_HEAD
-        self.pc = 0
+
+        self.pc = 0x00
+        self.fl = 0x00
 
         self.perform_op = {}
         self.perform_op[LDI] = self._ldi
@@ -55,6 +61,10 @@ class CPU:
         self.perform_op[MUL] = self._mul
         self.perform_op[PUSH] = self._push
         self.perform_op[POP] = self._pop
+        self.perform_op[JMP] = self._jmp
+        self.perform_op[JEQ] = self._jeq
+        self.perform_op[JNE] = self._jne
+        self.perform_op[CMP] = self._cmp
 
         self.is_running = False
 
@@ -121,28 +131,22 @@ class CPU:
         self.reg[PROGRAM_END] = address
 
     def _to_next_instruction(self, ir):
-        # Meanings of the bits in the first byte of each instruction: AABCDDDD
-        #   AA Number of operands for this opcode, 0-2
-        #   B 1 if this is an ALU operation
-        #   C 1 if this instruction sets the PC
-        #   DDDD Instruction identifier
-        isPcAlreadySet = ir >> OP_SETS_INST
-        isPcAlreadySet = isPcAlreadySet & ONE_BIT
-        if not isPcAlreadySet:
-            self.pc += (ir >> NUM_OPERANDS) + 1
 
-    def _shutdown(self, exit_code=DONE):
+        isPcAlreadySet = ir >> 0x04
+        isPcAlreadySet = isPcAlreadySet & 0xff
+        if not isPcAlreadySet:
+            self.pc += (ir >> 0x06) + 1
+
+    def _shutdown(self, exit_code=0):
         print("Shutting Down...")
         sys.exit(exit_code)
 
     def alu(self, op, reg_a, reg_b):
         """ALU operations."""
 
-        if op == "ADD":
-            self.reg[reg_a] += self.reg[reg_b] & ONE_BYTE
-        # elif op == "SUB": etc
-        elif op == "MUL":
-            self.reg[reg_a] *= self.reg[reg_b] & ONE_BYTE
+        if op == "MUL":
+            self.reg[reg_a] *= self.reg[reg_b] & 0xff
+
         else:
             raise Exception("Unsupported ALU operation")
 
@@ -154,7 +158,7 @@ class CPU:
 
         print(f"TRACE: %02X | %02X %02X %02X |" % (
             self.pc,
-            # self.fl,
+            self.fl,
             # self.ie,
             self.ram_read(self.pc),
             self.ram_read(self.pc + 1),
@@ -180,15 +184,12 @@ class CPU:
             instruction_reg = self.ram_read(self.pc)
             op_a = self.ram_read(self.pc + 1)
             op_b = self.ram_read(self.pc + 2)
-            # print("--- Before OP ---")
-            # self.trace()
+
             if instruction_reg in self.perform_op:
                 self.perform_op[instruction_reg](op_a, op_b)
                 self._to_next_instruction(instruction_reg)
             else:
                 print(f"Unknown Instruction {instruction_reg}")
                 self._shutdown(UNKNOWN_INSTRUCTION)
-            # print("--- After OP ---")
-            # self.trace()
 
         self._shutdown()
