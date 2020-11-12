@@ -68,20 +68,28 @@ class CPU:
         self.is_running = False
 
     def _cmp(self, *operands):
-        pass
+        # compare values in reg A and reg B
+        self.alu("CMP", *operands)
 
     def _jmp(self, *operands):
         # JMP register
         # Jump to the address stored in the given register."""
-        pass
+        self.pc = self.reg[operands[0]]
 
     def _jeq(self, *operands):
         # JEQ register
-        pass
+        if self.fl & 0x01:
+            self.pc = self.reg[operands[0]]
+        else:
+            self.pc += 2
 
     def _jne(self, *operands):
         # JNE register
-        pass
+        # If E flag is clear jump to address in register.
+        if not (self.fl & 0x01):
+            self.pc = self.reg[operands[0]]
+        else:
+            self.pc += 2
 
     def _ldi(self, *operands):
         # Set the value of a register to an integer.
