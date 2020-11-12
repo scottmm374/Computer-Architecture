@@ -19,8 +19,6 @@ DONE = 0
 
 # Other
 MUL = 0b10100010
-CALL = 0b01010000
-RET = 0b00010001
 PUSH = 0b01000101
 POP = 0b01000110
 PRN = 0b01000111
@@ -40,6 +38,10 @@ ONE_BYTE = 0xff
 ONE_BIT = 0x01
 OP_SETS_INST = 0x04
 NUM_OPERANDS = 0x06
+CMP_CLEAR = 0b11111000
+EQ = 0x01
+GT = 0x02
+LT = 0x04
 
 
 class CPU:
@@ -78,7 +80,7 @@ class CPU:
 
     def _jeq(self, *operands):
         # JEQ register
-        if self.fl & 0x01:
+        if self.fl & EQ:
             self.pc = self.reg[operands[0]]
         else:
             self.pc += 2
@@ -86,7 +88,7 @@ class CPU:
     def _jne(self, *operands):
         # JNE register
         # If E flag is clear jump to address in register.
-        if not (self.fl & 0x01):
+        if not (self.fl & EQ):
             self.pc = self.reg[operands[0]]
         else:
             self.pc += 2
@@ -154,23 +156,33 @@ class CPU:
 
     def _to_next_instruction(self, ir):
 
-        isPcAlreadySet = ir >> 0x04
-        isPcAlreadySet = isPcAlreadySet & 0xff
+        isPcAlreadySet = ir >> OP_SETS_INST
+        isPcAlreadySet = isPcAlreadySet & ONE_BIT
         if not isPcAlreadySet:
-            self.pc += (ir >> 0x06) + 1
+            self.pc += (ir >> NUM_OPERANDS) + 1
 
-    def _shutdown(self, exit_code=0):
-        print("Shutting Down...")
+    def _shutdown(self, exit_code=DONE):
         sys.exit(exit_code)
 
     def alu(self, op, reg_a, reg_b):
         """ALU operations."""
 
         if op == "MUL":
-            self.reg[reg_a] *= self.reg[reg_b] & 0xff
+            self.reg[reg_a] *= self.reg[reg_b]
+        elif op == "CMP":
+            # clear CMP flag
+            self.fl &= CMP_CLEAR
+            if self.reg[reg_a] < self.reg[reg_b]:
+                self.fl |= LT
+            elif self.reg[reg_a] > self.reg[reg_b]:
+                self.fl |= GT
+            else:
+                self.fl |= EQ
 
         else:
             raise Exception("Unsupported ALU operation")
+
+        self.reg[reg_a] &= ONE_BYTE
 
     def trace(self):
         """
@@ -200,7 +212,6 @@ class CPU:
 
     def run(self):
         """Run the CPU."""
-        print("Running...")
         self.is_running = True
         while self.is_running:
             instruction_reg = self.ram_read(self.pc)
@@ -215,3 +226,6 @@ class CPU:
                 self._shutdown(UNKNOWN_INSTRUCTION)
 
         self._shutdown()
+
+# command to run tests
+# python ls8.py sctest.ls8 sctest.asm
